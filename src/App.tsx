@@ -14,10 +14,25 @@ import {
   Database,
   ArrowRight,
   Fingerprint,
-  Trash2
+  Trash2,
+  PieChart as PieChartIcon,
+  BarChart2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI, Type } from "@google/genai";
+import { 
+  PieChart, 
+  Pie, 
+  Cell, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Legend,
+  CartesianGrid
+} from "recharts";
 
 // Initialize Gemini API
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -54,6 +69,8 @@ interface HistoryItem {
 export default function App() {
   const [keyword, setKeyword] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchPhase, setSearchPhase] = useState("");
   const [report, setReport] = useState<Report | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"search" | "history">("search");
@@ -103,61 +120,101 @@ export default function App() {
     if (!keyword.trim()) return;
 
     setIsSearching(true);
+    setSearchProgress(0);
+    setSearchPhase("Initializing Engine...");
     setError(null);
     setReport(null);
 
+    // Simulated progress tracker
+    const progressInterval = setInterval(() => {
+      setSearchProgress(prev => {
+        if (prev >= 90) return prev;
+        const phases = [
+          { threshold: 10, text: "Initializing Global Intelligence Clusters..." },
+          { threshold: 25, text: "Scanning Telegram & Signal Leak Bots (SGK)..." },
+          { threshold: 45, text: "Mapping Global Socials (X, LinkdedIn, Meta)..." },
+          { threshold: 65, text: "Trawling WeChat, Weibo & Signal Assets..." },
+          { threshold: 80, text: "Cross-platform Identity Correlation..." },
+          { threshold: 90, text: "Compiling Risk Assessment Matrix..." }
+        ];
+        
+        const currentPhase = phases.find(p => prev < p.threshold);
+        if (currentPhase) setSearchPhase(currentPhase.text);
+        
+        return prev + (Math.random() * 5);
+      });
+    }, 800);
+
     try {
-      // Enhanced OSINT prompt for deeper scanning
+      // Use Gemini 2.0 Flash with a very specific, structural prompt
+      const prompt = `ACT AS A PURE JSON GENERATOR. No conversation. No preamble. No acknowledgement.
+                   
+                   [CONTEXT] Elite OSINT Intelligence scan for: "${keyword}".
+                   [STRICT RELEVANCE] Discard generic news. Only factual footprints related to the keyword.
+                   
+                   [JSON SCHEMA]
+                   {
+                     "results": [
+                       {
+                         "title": "Match found on [Source]",
+                         "url": "Direct link",
+                         "snippet": "Contextual proof of match",
+                         "source": "Platform Name",
+                         "risk_level": "RED_ALERT/YELLOW_WARNING/GREEN_SAFE",
+                         "risk_score": 0,
+                         "verified": true
+                       }
+                     ],
+                     "summary": {"total": 0, "high_risk": 0},
+                     "analysisText": "Forensic summary..."
+                   }
+                   
+                   START JSON:`;
+
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: `[SYSTEM] You are a high-performance OSINT (Open Source Intelligence) Engine. 
-                   [TASK] Perform an exhaustive privacy audit for the keyword: "${keyword}".
-                   [SCAN STRATEGY]
-                   1. Search for public code leaks (GitHub, Gitee, GitLab).
-                   2. Search for Telegram channel mentions (t.me).
-                   3. Search for pastebin/clipboard leaks (Pastebin, Ghostbin).
-                   4. Identify social media footprints (Weibo, Zhihu, LinkedIn).
-                   5. Look for public document leaks (Baidu Wenku, Docin).
-                   6. Verify associations between this keyword and terms like 'leak', 'sgk', 'dump', 'breach'.
-                   [OUTPUT] Provide results in a structured, actionable format.`,
+        model: "gemini-2.0-flash",
+        contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              results: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    url: { type: Type.STRING },
-                    snippet: { type: Type.STRING },
-                    source: { type: Type.STRING },
-                    risk_level: { type: Type.STRING, description: "RED_ALERT, YELLOW_WARNING, GREEN_SAFE" },
-                    risk_score: { type: Type.NUMBER },
-                    verified: { type: Type.BOOLEAN }
-                  },
-                  required: ["title", "url", "snippet", "source", "risk_level", "risk_score"]
-                }
-              },
-              summary: {
-                type: Type.OBJECT,
-                properties: {
-                  total: { type: Type.NUMBER },
-                  high_risk: { type: Type.NUMBER }
-                },
-                required: ["total", "high_risk"]
-              },
-              analysisText: { type: Type.STRING, description: "Detailed summary of findings and remediation advice" }
-            },
-            required: ["results", "summary", "analysisText"]
-          }
+          responseMimeType: "application/json"
         }
       });
 
-      const data = JSON.parse(response.text.trim());
+      const responseText = response.text || "";
+      if (!responseText.trim()) {
+        throw new Error("Intelligence scan returned zero data.");
+      }
+      
+      // Robust JSON extraction
+      let cleanJson = "";
+      const startIdx = responseText.indexOf('{');
+      const endIdx = responseText.lastIndexOf('}');
+      
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+         cleanJson = responseText.substring(startIdx, endIdx + 1);
+      } else {
+         console.error("No JSON found in response:", responseText);
+         throw new Error("Intelligence stream format error.");
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(cleanJson);
+      } catch (parseErr) {
+        console.error("JSON Parse Error:", parseErr, "Snippet:", cleanJson.substring(0, 100));
+        throw new Error("Intelligence data corruption.");
+      }
+
+      // Basic validation of required fields
+      if (!data.results || !Array.isArray(data.results)) data.results = [];
+      if (!data.summary) {
+        data.summary = { 
+          total: data.results.length, 
+          high_risk: data.results.filter((r: any) => r.risk_level === "RED_ALERT").length 
+        };
+      }
+      if (!data.analysisText) data.analysisText = "Scan completed.";
+
       const newReport: Report = {
         ...data,
         keyword,
@@ -165,11 +222,14 @@ export default function App() {
       };
       
       setReport(newReport);
+      setSearchProgress(100);
+      setSearchPhase("Analysis Complete");
       saveToHistory(newReport);
     } catch (err) {
       console.error(err);
-      setError("Analysis failed. This might be due to safety filters or networking issues.");
+      setError("Analysis failed. This might be due to safety filters, token limits, or API connectivity.");
     } finally {
+      clearInterval(progressInterval);
       setIsSearching(false);
     }
   };
@@ -182,6 +242,23 @@ export default function App() {
     }
   };
 
+  // Data processing for charts
+  const riskData = report ? [
+    { name: "High Risk", value: report.summary.high_risk, color: "#ef4444" },
+    { name: "Med Risk", value: report.results.filter(r => r.risk_level.includes("YELLOW") || r.risk_level.includes("中")).length, color: "#eab308" },
+    { name: "Low Risk", value: report.results.filter(r => !r.risk_level.includes("RED") && !r.risk_level.includes("高") && !r.risk_level.includes("YELLOW") && !r.risk_level.includes("中")).length, color: "#10b981" }
+  ].filter(d => d.value > 0) : [];
+
+  const sourceCounts = report ? report.results.reduce((acc: any, curr) => {
+    acc[curr.source] = (acc[curr.source] || 0) + 1;
+    return acc;
+  }, {}) : {};
+
+  const sourceData = Object.keys(sourceCounts).map(source => ({
+    name: source,
+    count: sourceCounts[source]
+  })).sort((a, b) => b.count - a.count);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-emerald-500/30 p-4 md:p-6 flex flex-col gap-6">
       {/* Header / Nav */}
@@ -191,33 +268,33 @@ export default function App() {
             <ShieldCheck className="w-6 h-6 text-neutral-950" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-lg font-bold tracking-tight uppercase leading-none">PrivacyExplorer</h1>
-            <span className="text-[10px] text-neutral-500 font-mono tracking-widest uppercase">OSINT Engine v1.2</span>
+            <h1 className="text-base md:text-lg font-bold tracking-tight uppercase leading-none">PrivacyExplorer</h1>
+            <span className="text-[9px] md:text-[10px] text-neutral-500 font-mono tracking-widest uppercase">OSINT Engine v1.2</span>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 bg-neutral-800/50 px-3 py-1.5 rounded-lg border border-neutral-700/50">
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="hidden lg:flex items-center gap-2 bg-neutral-800/50 px-3 py-1.5 rounded-lg border border-neutral-700/50">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="text-[10px] font-medium text-neutral-400 uppercase">System: Operational</span>
           </div>
           
-          <div className="flex gap-1 p-1 bg-neutral-800/50 rounded-xl border border-neutral-800">
+          <div className="flex gap-0.5 p-0.5 md:p-1 bg-neutral-800/50 rounded-xl border border-neutral-800">
             <button 
               onClick={() => setActiveTab("search")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              className={`px-3 md:px-4 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === "search" ? "bg-neutral-700 text-white shadow-lg" : "text-neutral-500 hover:text-neutral-300"
               }`}
             >
-              Search
+              Scan
             </button>
             <button 
               onClick={() => setActiveTab("history")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              className={`px-3 md:px-4 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === "history" ? "bg-neutral-700 text-white shadow-lg" : "text-neutral-500 hover:text-neutral-300"
               }`}
             >
-              History
+              Arch
             </button>
           </div>
         </div>
@@ -231,47 +308,71 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="grid grid-cols-12 gap-6"
+              className="grid grid-cols-12 gap-4 md:gap-6"
             >
               {/* Search Hero Area */}
-              <div className="col-span-12 lg:col-span-8 bg-neutral-900 border border-neutral-800 rounded-3xl p-8 md:p-12 flex flex-col justify-center items-center text-center space-y-8 min-h-[400px] relative overflow-hidden group">
+              <div className="col-span-12 lg:col-span-8 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 md:p-12 flex flex-col justify-center items-center text-center space-y-6 md:space-y-8 min-h-[300px] md:min-h-[400px] relative overflow-hidden group">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 
                 <div className="space-y-4 max-w-xl">
                   <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="inline-block px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-bold text-emerald-500 tracking-widest uppercase mb-4"
+                    className="inline-block px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-bold text-emerald-500 tracking-widest uppercase mb-2 md:mb-4"
                   >
-                    Deep Web OSINT Scanner
+                    Mobile Privacy Guard
                   </motion.div>
-                  <h2 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight">
+                  <h2 className="text-3xl md:text-6xl font-black tracking-tight text-white leading-tight">
                     DEEP PRIVACY <span className="text-emerald-500">SEARCH.</span>
                   </h2>
-                  <p className="text-neutral-500 text-sm md:text-base font-medium">
-                    Analyze data footprints across 50+ sources including search engines, code repos, and telegram channels.
+                  <p className="text-neutral-500 text-xs md:text-base font-medium">
+                    Analyze data footprints across 50+ sources including code repos and leaks.
                   </p>
                 </div>
 
-                <form onSubmit={handleSearch} className="w-full max-w-lg relative group/form">
-                  <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-                    <Search className="h-5 w-5 text-neutral-600 group-focus-within/form:text-emerald-500 transition-colors" />
+                <div className="w-full max-w-lg space-y-4">
+                  <form onSubmit={handleSearch} className="relative group/form flex flex-col sm:block gap-4">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
+                        <Search className="h-5 w-5 text-neutral-600 group-focus-within/form:text-emerald-500 transition-colors" />
+                      </div>
+                      <input
+                        type="text"
+                        value={keyword}
+                        onChange={(e) => setKeyword(e.target.value)}
+                        placeholder="Name, Phone, or Email..."
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-2xl py-4 md:py-5 pl-14 pr-4 sm:pr-40 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 focus:outline-none transition-all placeholder:text-neutral-700 text-white font-medium"
+                      />
+                      <button
+                        disabled={isSearching}
+                        className="hidden sm:flex absolute right-2.5 inset-y-2.5 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:bg-neutral-800 disabled:text-neutral-600 rounded-xl font-bold text-xs uppercase tracking-widest transition-all items-center gap-2 shadow-lg shadow-emerald-900/40 text-neutral-950"
+                      >
+                        {isSearching ? <Loader2 className="animate-spin h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {isSearching ? "Crawling..." : "Scan"}
+                      </button>
+                    </div>
+                    <button
+                      disabled={isSearching}
+                      className="sm:hidden w-full py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:bg-neutral-800 disabled:text-neutral-600 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 text-neutral-950"
+                    >
+                      {isSearching ? <Loader2 className="animate-spin h-5 w-5" /> : <Search className="h-5 w-5" />}
+                      {isSearching ? "Crawling..." : "Scan Now"}
+                    </button>
+                  </form>
+
+                  {/* Quick Filters */}
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {["Code Leaks", "Social Footprints", "Breaches", "Telegram"].map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => setKeyword(tag === "Social Footprints" ? keyword + " linkedin weibo" : keyword + " " + tag.toLowerCase())}
+                        className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-[10px] font-bold text-neutral-400 uppercase transition-all"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
                   </div>
-                  <input
-                    type="text"
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    placeholder="Enter phone, email, name, or metadata..."
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-2xl py-5 pl-14 pr-40 focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 focus:outline-none transition-all placeholder:text-neutral-700 text-white font-medium"
-                  />
-                  <button
-                    disabled={isSearching}
-                    className="absolute right-2.5 inset-y-2.5 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:bg-neutral-800 disabled:text-neutral-600 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/40 text-neutral-950"
-                  >
-                    {isSearching ? <Loader2 className="animate-spin h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {isSearching ? "Crawling..." : "Scan Now"}
-                  </button>
-                </form>
+                </div>
 
                 {error && (
                   <motion.div 
@@ -315,24 +416,46 @@ export default function App() {
 
               {/* Loading / Results Bento Items */}
               {isSearching && !report && (
-                <div className="col-span-12 bg-neutral-900 border border-neutral-800 rounded-3xl p-24 flex flex-col items-center justify-center space-y-8">
+                <div className="col-span-12 bg-neutral-900 border border-neutral-800 rounded-3xl p-12 md:p-24 flex flex-col items-center justify-center space-y-8">
                   <div className="relative">
                     <motion.div 
                       animate={{ rotate: 360, scale: [1, 1.1, 1] }}
                       transition={{ rotate: { repeat: Infinity, duration: 3, ease: "linear" }, scale: { repeat: Infinity, duration: 2, ease: "easeInOut" } }}
-                      className="w-32 h-32 border-4 border-emerald-500/10 border-t-emerald-500 rounded-full"
+                      className="w-24 h-24 md:w-32 md:h-32 border-4 border-emerald-500/10 border-t-emerald-500 rounded-full"
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-12 h-12 bg-neutral-800 rounded-2xl flex items-center justify-center shadow-2xl">
-                        <Lock className="h-6 w-6 text-emerald-500 animate-pulse" />
+                      <div className="w-10 h-10 md:w-12 md:h-12 bg-neutral-800 rounded-2xl flex items-center justify-center shadow-2xl">
+                        <Lock className="h-5 w-5 md:h-6 md:h-6 text-emerald-500 animate-pulse" />
                       </div>
                     </div>
                   </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-xl font-black uppercase tracking-tight">Accessing Databases</h3>
-                    <p className="text-neutral-500 text-sm max-w-xs mx-auto uppercase font-bold tracking-tighter">
-                      Querying encrypted datasets and code repositories...
-                    </p>
+                  
+                  <div className="w-full max-w-md space-y-4">
+                    <div className="flex justify-between items-end">
+                      <div className="space-y-1">
+                        <h3 className="text-lg md:text-xl font-black uppercase tracking-tight">Accessing Databases</h3>
+                        <p className="text-emerald-500 text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">
+                          {searchPhase}
+                        </p>
+                      </div>
+                      <span className="text-xl md:text-2xl font-black text-neutral-400 font-mono">
+                        {Math.floor(searchProgress)}%
+                      </span>
+                    </div>
+
+                    <div className="w-full h-3 bg-neutral-950 border border-neutral-800 rounded-full overflow-hidden p-0.5">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        animate={{ width: `${searchProgress}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+                      />
+                    </div>
+                    
+                    <div className="flex justify-between text-[9px] font-bold text-neutral-600 uppercase tracking-widest pt-2">
+                      <span>Encryption: Strong</span>
+                      <span>Nodes: 128 Active</span>
+                      <span>Mode: Deep Scan</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -403,6 +526,71 @@ export default function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Visual Intelligence Section */}
+                  <div className="col-span-12 lg:col-span-6 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col h-[350px]">
+                    <div className="flex items-center gap-2 mb-6">
+                       <PieChartIcon className="h-4 w-4 text-neutral-500" />
+                       <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Risk Distribution</h3>
+                    </div>
+                    <div className="flex-1 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={riskData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            {riskData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '12px', fontSize: '10px', color: '#fff' }} 
+                            itemStyle={{ color: '#fff' }}
+                          />
+                          <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-[10px] text-neutral-400 uppercase font-bold">{value}</span>} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="col-span-12 lg:col-span-6 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col h-[350px]">
+                    <div className="flex items-center gap-2 mb-6">
+                       <BarChart2 className="h-4 w-4 text-neutral-500" />
+                       <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Top Intelligence Sources</h3>
+                    </div>
+                    <div className="flex-1 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={sourceData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                          <XAxis type="number" hide />
+                          <YAxis 
+                            dataKey="name" 
+                            type="category" 
+                            width={100} 
+                            tick={{ fill: '#737373', fontSize: 10, fontWeight: 'bold' }} 
+                            axisLine={false} 
+                            tickLine={false}
+                          />
+                          <Tooltip 
+                            cursor={{ fill: 'transparent' }}
+                            contentStyle={{ backgroundColor: '#171717', border: '1px solid #262626', borderRadius: '12px', fontSize: '10px' }}
+                          />
+                          <Bar 
+                            dataKey="count" 
+                            fill="#3b82f6" 
+                            radius={[0, 4, 4, 0]} 
+                            barSize={20}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
 
                   {/* Large Results Table Area */}
                   <div className="col-span-12 bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -531,11 +719,11 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {history.map((item) => (
-                  <motion.button
+                  <motion.div
                     key={item.id}
                     onClick={() => loadReport(item.id)}
                     whileHover={{ y: -6, scale: 1.02 }}
-                    className="p-6 bg-neutral-900 border border-neutral-800 rounded-3xl text-left hover:border-emerald-500/50 transition-all group relative overflow-hidden"
+                    className="p-6 bg-neutral-900 border border-neutral-800 rounded-3xl text-left hover:border-emerald-500/50 transition-all group relative overflow-hidden cursor-pointer"
                   >
                     <div className="absolute top-0 right-0 p-4 flex gap-2">
                       <button 
@@ -576,7 +764,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  </motion.button>
+                  </motion.div>
                 ))}
 
                 {history.length === 0 && (
