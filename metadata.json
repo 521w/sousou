@@ -1,0 +1,6 @@
+{
+  "name": "Privacy Leak Explorer",
+  "description": "A comprehensive deep-search tool to identify personal information exposure across search engines, code repositories, and social platforms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
