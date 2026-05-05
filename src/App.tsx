@@ -107,13 +107,19 @@ export default function App() {
     setReport(null);
 
     try {
-      // Use Gemini with Google Search tool to perform OSINT
+      // Enhanced OSINT prompt for deeper scanning
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
-        contents: `Act as a professional OSINT and Privacy Audit tool. 
-                   Perform a deep search to find publicly accessible information and potential privacy leaks for the keyword: "${keyword}".
-                   Include findings from social media, public records, and technical leaks.
-                   Rate the risk of each finding.`,
+        contents: `[SYSTEM] You are a high-performance OSINT (Open Source Intelligence) Engine. 
+                   [TASK] Perform an exhaustive privacy audit for the keyword: "${keyword}".
+                   [SCAN STRATEGY]
+                   1. Search for public code leaks (GitHub, Gitee, GitLab).
+                   2. Search for Telegram channel mentions (t.me).
+                   3. Search for pastebin/clipboard leaks (Pastebin, Ghostbin).
+                   4. Identify social media footprints (Weibo, Zhihu, LinkedIn).
+                   5. Look for public document leaks (Baidu Wenku, Docin).
+                   6. Verify associations between this keyword and terms like 'leak', 'sgk', 'dump', 'breach'.
+                   [OUTPUT] Provide results in a structured, actionable format.`,
         config: {
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
@@ -129,7 +135,7 @@ export default function App() {
                     url: { type: Type.STRING },
                     snippet: { type: Type.STRING },
                     source: { type: Type.STRING },
-                    risk_level: { type: Type.STRING, description: "One of: 🔴 高风险, 🟡 中风险, 🟢 低风险" },
+                    risk_level: { type: Type.STRING, description: "RED_ALERT, YELLOW_WARNING, GREEN_SAFE" },
                     risk_score: { type: Type.NUMBER },
                     verified: { type: Type.BOOLEAN }
                   },
@@ -144,7 +150,7 @@ export default function App() {
                 },
                 required: ["total", "high_risk"]
               },
-              analysisText: { type: Type.STRING, description: "A brief summary of overall security posture" }
+              analysisText: { type: Type.STRING, description: "Detailed summary of findings and remediation advice" }
             },
             required: ["results", "summary", "analysisText"]
           }
@@ -162,7 +168,7 @@ export default function App() {
       saveToHistory(newReport);
     } catch (err) {
       console.error(err);
-      setError("AI analysis failed. This might be due to API constraints or sensitive content filtered by safety settings.");
+      setError("Analysis failed. This might be due to safety filters or networking issues.");
     } finally {
       setIsSearching(false);
     }
@@ -443,11 +449,11 @@ export default function App() {
                               </td>
                               <td className="px-6 py-4">
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                                  res.risk_level.includes("高") ? "bg-red-500/10 text-red-500 border-red-500/20" :
-                                  res.risk_level.includes("中") ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
+                                  res.risk_level.includes("RED") || res.risk_level.includes("高") ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                  res.risk_level.includes("YELLOW") || res.risk_level.includes("中") ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
                                   "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                 }`}>
-                                  {res.risk_level.toUpperCase()}
+                                  {res.risk_level.toUpperCase().replace('_', ' ')}
                                 </span>
                               </td>
                               <td className="px-6 py-4">
