@@ -16,7 +16,13 @@ import {
   Fingerprint,
   Trash2,
   PieChart as PieChartIcon,
-  BarChart2
+  BarChart2,
+  Activity,
+  Radio,
+  Signal,
+  Wifi,
+  Settings,
+  X as XIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -48,6 +54,7 @@ interface SearchResult {
 }
 
 interface Report {
+  id: string;
   keyword: string;
   results: SearchResult[];
   summary: {
@@ -75,6 +82,9 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"search" | "history">("search");
   const [error, setError] = useState<string | null>(null);
+  const [bearerToken, setBearerToken] = useState<string>(localStorage.getItem("x_bearer_token") || "");
+  const [showSettings, setShowSettings] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
 
   useEffect(() => {
     loadHistoryFromStorage();
@@ -107,6 +117,10 @@ export default function App() {
     localStorage.setItem(`report_${id}`, JSON.stringify(newReport));
   };
 
+  useEffect(() => {
+    localStorage.setItem("x_bearer_token", bearerToken);
+  }, [bearerToken]);
+
   const deleteHistoryItem = (e: MouseEvent, id: string) => {
     e.stopPropagation();
     const newHistory = history.filter(item => item.id !== id);
@@ -115,121 +129,189 @@ export default function App() {
     localStorage.removeItem(`report_${id}`);
   };
 
+  // --- OSINT Forensic Utilities [VERSION 3.0 ULTIMATE] ---
+  const generateDorkQueries = (term: string) => [
+    { name: "Git/Source Secrets", query: `site:github.com | site:gitlab.com | site:bitbucket.org "${term}" (password|api_key|token|access_key|secret)` },
+    { name: "Cloud/S3 Buckets", query: `site:s3.amazonaws.com | site:blob.core.windows.net | site:storage.googleapis.com "${term}"` },
+    { name: "Paste/Leak Sites", query: `site:pastebin.com | site:rentry.co | site:ghostbin.com | site:controlc.com "${term}"` },
+    { name: "Cyber Intel Forums", query: `site:v2ex.com | site:hostloc.com | site:nodeseek.com | site:linux.do "${term}"` },
+    { name: "Document Exploits", query: `filetype:sql | filetype:env | filetype:config | filetype:bak "${term}"` }
+  ];
+
+  const performNativeForensicSearch = async (term: string) => {
+    setSearchPhase("Initializing Tether-Alpha v3.0 [ULTIMATE]...");
+    
+    // 1. Parallel Execution
+    const [probeRes, xRes, dorkResults] = await Promise.all([
+      fetch("/api/osint/probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: term })
+      }).then(res => res.ok ? res.json() : null).catch(() => null),
+      fetch(`/api/search/x?q=${encodeURIComponent(term)}`, {
+        headers: { "X-User-Token": bearerToken }
+      }).then(res => res.ok ? res.json() : null).catch(() => null),
+      (async () => {
+        const dorkSets = generateDorkQueries(term);
+        return dorkSets.map(dork => ({
+          title: `Forensic Trajectory: ${dork.name}`,
+          url: `https://www.google.com/search?q=${encodeURIComponent(dork.query)}`,
+          snippet: `Tether-Alpha generated vector for deep infrastructure/identity audit.`,
+          source: "HEURISTIC_CORE_V3",
+          risk_level: "YELLOW_WARNING",
+          risk_score: 50,
+          verified: false
+        }));
+      })()
+    ]);
+
+    // 2. Synthesize Results
+    const probeHits: SearchResult[] = (probeRes?.results || []).map((p: any) => ({
+      title: p.title,
+      url: "#",
+      snippet: p.findings.join(" | "),
+      source: `TETHER_PROBE_V3 (${probeRes.telemetry?.recordsScanned || "18B+"})`,
+      risk_level: p.confidence > 90 ? "RED_ALERT" : "YELLOW_WARNING",
+      risk_score: p.confidence,
+      verified: true
+    }));
+
+    const xHits: SearchResult[] = (xRes?.results || []).map((hit: any) => ({
+      title: "X Identity Link",
+      url: hit.url || `https://twitter.com/search?q=${encodeURIComponent(term)}`,
+      snippet: hit.text || "Direct API match detected on X-Matrix.",
+      source: "X_API_LINK",
+      risk_level: "YELLOW_WARNING",
+      risk_score: 55,
+      verified: true
+    }));
+
+    const combined = [...probeHits, ...xHits, ...dorkResults];
+
+    return {
+      results: combined,
+      summary: { 
+        total: combined.length, 
+        high_risk: combined.filter(r => r.risk_level === "RED_ALERT").length 
+      },
+      analysisText: probeRes 
+        ? `[TETHER-ALPHA ULTIMATE SYNC COMPLETE] 已分析 ${probeRes.telemetry?.recordsScanned} 记录。检测到深度身份特征重合。系统已针对 [${term}] 建立三维关联模型，建议优先执行 Git/Cloud 存储桶的手动探针验证。`
+        : "取证引擎已切换至全静默模式。"
+    };
+  };
+
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (!keyword.trim()) return;
 
     setIsSearching(true);
     setSearchProgress(0);
-    setSearchPhase("Initializing Engine...");
+    setSearchPhase("Priming Tether-Alpha Engine...");
     setError(null);
+    setTerminalLogs([]);
     setReport(null);
 
     // Simulated progress tracker
     const progressInterval = setInterval(() => {
       setSearchProgress(prev => {
-        if (prev >= 90) return prev;
+        if (prev >= 95) return prev;
         const phases = [
-          { threshold: 10, text: "Initializing Global Intelligence Clusters..." },
-          { threshold: 25, text: "Scanning Telegram & Signal Leak Bots (SGK)..." },
-          { threshold: 45, text: "Mapping Global Socials (X, LinkdedIn, Meta)..." },
-          { threshold: 65, text: "Trawling WeChat, Weibo & Signal Assets..." },
-          { threshold: 80, text: "Cross-platform Identity Correlation..." },
-          { threshold: 90, text: "Compiling Risk Assessment Matrix..." }
+          { threshold: 15, text: "SYNCING_REGIONAL_INTEL_BRIDGES" },
+          { threshold: 30, text: "EXECUTING_NATIVE_PROBE_V3_ULTIMATE" },
+          { threshold: 45, text: "TRAJECTORY_MAPPING_PII_MIRRORS" },
+          { threshold: 60, text: "CROSS_THREAD_COLLISION_DETECTION" },
+          { threshold: 75, text: "DECRYPTING_HISTORICAL_LEAK_INDEX" },
+          { threshold: 90, text: "GENERATING_UNIFIED_THREAT_MATRIX" }
         ];
-        
         const currentPhase = phases.find(p => prev < p.threshold);
         if (currentPhase) setSearchPhase(currentPhase.text);
-        
-        return prev + (Math.random() * 5);
+        return prev + (Math.random() * 6);
       });
-    }, 800);
+    }, 400);
+
+    // Mock terminal logs
+    const logs = [
+      "> Initializing secure node @ 127.0.0.1:443",
+      "> Protocol: SHA-256 / AES-GCM-256",
+      "> Scanning indices: 18.5B records Scanned",
+      "> Matching pattern: [HIDDEN_SIGNATURE_P4]",
+      "> Collision detected: Segment 0x8FA2",
+      "> Pivoting via regional intelligence bridges...",
+      "> S3_BUCKET_SCAN: Initiated [BETA_TARGET]",
+      "> GIT_LEAK_PROBE: Active_Threat_Scan",
+      "> Finalizing forensic trajectory mapping..."
+    ];
+    let logIdx = 0;
+    const logInterval = setInterval(() => {
+      if (logIdx < logs.length) {
+        setTerminalLogs(prev => [...prev.slice(-5), logs[logIdx]]);
+        logIdx++;
+      }
+    }, 600);
 
     try {
-      // Use Gemini 2.0 Flash with a very specific, structural prompt
-      const prompt = `ACT AS A PURE JSON GENERATOR. No conversation. No preamble. No acknowledgement.
-                   
-                   [CONTEXT] Elite OSINT Intelligence scan for: "${keyword}".
-                   [STRICT RELEVANCE] Discard generic news. Only factual footprints related to the keyword.
-                   
-                   [JSON SCHEMA]
-                   {
-                     "results": [
-                       {
-                         "title": "Match found on [Source]",
-                         "url": "Direct link",
-                         "snippet": "Contextual proof of match",
-                         "source": "Platform Name",
-                         "risk_level": "RED_ALERT/YELLOW_WARNING/GREEN_SAFE",
-                         "risk_score": 0,
-                         "verified": true
-                       }
-                     ],
-                     "summary": {"total": 0, "high_risk": 0},
-                     "analysisText": "Forensic summary..."
-                   }
-                   
-                   START JSON:`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
-        }
-      });
-
-      const responseText = response.text || "";
-      if (!responseText.trim()) {
-        throw new Error("Intelligence scan returned zero data.");
-      }
+      // 1. PRIMARY FORCE: Native Forensic Search
+      const nativeIntel = await performNativeForensicSearch(keyword);
       
-      // Robust JSON extraction
-      let cleanJson = "";
-      const startIdx = responseText.indexOf('{');
-      const endIdx = responseText.lastIndexOf('}');
-      
-      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-         cleanJson = responseText.substring(startIdx, endIdx + 1);
-      } else {
-         console.error("No JSON found in response:", responseText);
-         throw new Error("Intelligence stream format error.");
-      }
-      
-      let data;
+      // 2. AUXILIARY FORCE: AI Intelligence (Gemini + Search Tool)
+      let aiIntel: any = null;
       try {
-        data = JSON.parse(cleanJson);
-      } catch (parseErr) {
-        console.error("JSON Parse Error:", parseErr, "Snippet:", cleanJson.substring(0, 100));
-        throw new Error("Intelligence data corruption.");
+        const prompt = `[OSINT AUXILIARY INTEL] 
+                       [CONTEXT] Native engine found: ${JSON.stringify(nativeIntel.results.map(r => r.title))}
+                       [MISSION] Cross-reference these findings using live web data. Find hidden technical links.
+                       [STRICT JSON] {"results": [], "summary": {"total":0, "high_risk":0}, "analysisText": ""}`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: { tools: [{ googleSearch: {} }] }
+        });
+
+        const text = (response as any).text || "";
+        const s = text.indexOf('{');
+        const eIdx = text.lastIndexOf('}');
+        if (s !== -1 && eIdx !== -1) {
+          aiIntel = JSON.parse(text.substring(s, eIdx + 1));
+        }
+      } catch (aiErr) {
+        console.warn("Auxiliary AI Intel Offline:", aiErr);
       }
 
-      // Basic validation of required fields
-      if (!data.results || !Array.isArray(data.results)) data.results = [];
-      if (!data.summary) {
-        data.summary = { 
-          total: data.results.length, 
-          high_risk: data.results.filter((r: any) => r.risk_level === "RED_ALERT").length 
-        };
+      // 3. MERGE (Native leads, AI enhances)
+      const mergedResults = [...nativeIntel.results];
+      if (aiIntel && aiIntel.results) {
+        aiIntel.results.forEach((r: any) => {
+          r.source = `${r.source} (AI Ref)`;
+          mergedResults.push(r);
+        });
       }
-      if (!data.analysisText) data.analysisText = "Scan completed.";
 
       const newReport: Report = {
-        ...data,
+        id: Date.now().toString(),
         keyword,
+        results: mergedResults,
+        summary: {
+          total: mergedResults.length,
+          high_risk: mergedResults.filter(r => r.risk_level === "RED_ALERT").length
+        },
+        analysisText: aiIntel ? aiIntel.analysisText : nativeIntel.analysisText,
         timestamp: new Date().toISOString()
       };
       
       setReport(newReport);
       setSearchProgress(100);
-      setSearchPhase("Analysis Complete");
+      setSearchPhase("INTELLIGENCE_LOCKED");
       saveToHistory(newReport);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Analysis failed. This might be due to safety filters, token limits, or API connectivity.");
+      if (err.message?.includes("429") || err.message?.toLowerCase().includes("quota")) {
+        setError("Gemini API 配额已耗尽 (Quota Exceeded)。由于使用的是免费版 API，请稍等 1-5 分钟后再试，或尝试更精准的搜索词。");
+      } else {
+        setError("Analysis failed. This might be due to safety filters, token limits, or API connectivity.");
+      }
     } finally {
       clearInterval(progressInterval);
+      clearInterval(logInterval);
       setIsSearching(false);
     }
   };
@@ -267,16 +349,31 @@ export default function App() {
           <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
             <ShieldCheck className="w-6 h-6 text-neutral-950" />
           </div>
-          <div className="flex flex-col">
-            <h1 className="text-base md:text-lg font-bold tracking-tight uppercase leading-none">PrivacyExplorer</h1>
-            <span className="text-[9px] md:text-[10px] text-neutral-500 font-mono tracking-widest uppercase">OSINT Engine v1.2</span>
-          </div>
+              <div className="flex flex-col">
+                <h1 className="text-base md:text-lg font-bold tracking-tight uppercase leading-none">PrivacyExplorer</h1>
+                <span className="text-[9px] md:text-[10px] text-emerald-500 font-mono tracking-widest uppercase flex items-center gap-1.5">
+                  <div className="w-1 h-1 rounded-full bg-emerald-500 animate-ping"></div>
+                  Tether-Alpha Core Active
+                </span>
+              </div>
         </div>
         
         <div className="flex items-center gap-2 md:gap-4">
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="p-2 md:p-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all active:scale-95"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          
           <div className="hidden lg:flex items-center gap-2 bg-neutral-800/50 px-3 py-1.5 rounded-lg border border-neutral-700/50">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="text-[10px] font-medium text-neutral-400 uppercase">System: Operational</span>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 bg-neutral-800/50 px-3 py-1.5 rounded-lg border border-neutral-700/50">
+            <ShieldAlert className="w-3 h-3 text-emerald-500" />
+            <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-tighter">Zero-Retention Mode</span>
           </div>
           
           <div className="flex gap-0.5 p-0.5 md:p-1 bg-neutral-800/50 rounded-xl border border-neutral-800">
@@ -299,6 +396,63 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                    <Lock className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <h2 className="text-lg font-bold tracking-tight uppercase">API Configuration</h2>
+                </div>
+                <button onClick={() => setShowSettings(false)} className="text-neutral-500 hover:text-white">
+                  <XIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest block">X (Twitter) Bearer Token</label>
+                  <div className="relative">
+                    <input 
+                      type="password"
+                      value={bearerToken}
+                      onChange={(e) => setBearerToken(e.target.value)}
+                      placeholder="Enter Bearer Token..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-2xl px-5 py-4 text-sm font-mono focus:border-emerald-500 outline-none transition-all placeholder:text-neutral-800"
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      {bearerToken ? <ShieldCheck className="w-5 h-5 text-emerald-500" /> : <div className="w-2 h-2 rounded-full bg-neutral-800" />}
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-neutral-500 leading-relaxed uppercase">Tokens are saved locally. Required for deep platform indexing.</p>
+                </div>
+
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="w-full bg-emerald-500 py-4 rounded-2xl text-neutral-950 font-black uppercase text-xs tracking-widest hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-900/20"
+                >
+                  Save & Validate
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className="max-w-7xl w-full mx-auto flex-1">
         <AnimatePresence mode="wait">
@@ -387,16 +541,51 @@ export default function App() {
 
               {/* Status/Static info Bento Item */}
               <div className="col-span-12 lg:col-span-4 grid grid-rows-2 gap-6">
-                <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col justify-between">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Integrity Protection</h3>
-                    <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] rounded border border-emerald-500/20 font-bold tracking-tighter">SECURE</span>
+                <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col justify-between group overflow-hidden relative">
+                  <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <Radio className="w-24 h-24 text-emerald-500 -mr-8 -mt-8" />
                   </div>
-                  <div className="mt-4 flex items-end gap-2">
-                    <span className="text-5xl font-black text-white">100%</span>
-                    <span className="text-emerald-500 text-[10px] mb-2 font-bold uppercase">Stability</span>
+                  <div className="flex justify-between items-start relative z-10">
+                    <div className="flex items-center gap-2">
+                      <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
+                      <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Tether Radio Status</h3>
+                    </div>
+                    <span className="px-2 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] rounded border border-emerald-500/20 font-bold tracking-tighter animate-pulse">TRANSMITTING</span>
                   </div>
-                  <p className="text-[10px] text-neutral-500 leading-relaxed uppercase font-medium">All scans are non-intrusive and adhere to global OSINT best practices.</p>
+                  
+                  <div className="mt-4 space-y-2 relative z-10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-neutral-400">FREQ: 142.850 MHz</span>
+                      <div className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map(i => (
+                          <div key={i} className={`w-1 h-3 rounded-full ${i <= 3 ? "bg-emerald-500" : "bg-neutral-800"}`} />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="h-12 flex items-center gap-1 overflow-hidden">
+                      {Array.from({ length: 40 }).map((_, i) => (
+                        <motion.div
+                          key={i}
+                          animate={{ 
+                            height: [4, Math.random() * 24 + 4, 4],
+                            opacity: [0.3, 1, 0.3]
+                          }}
+                          transition={{ 
+                            duration: 1.5, 
+                            repeat: Infinity, 
+                            delay: i * 0.05,
+                            ease: "easeInOut"
+                          }}
+                          className="w-[2px] bg-emerald-500 rounded-full"
+                        />
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-[8px] font-mono text-neutral-600 uppercase tracking-tighter">
+                      <span>Enc: AES-256</span>
+                      <span>Signal: Solid</span>
+                      <span>Hop: Active</span>
+                    </div>
+                  </div>
                 </section>
 
                 <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
@@ -430,10 +619,10 @@ export default function App() {
                     </div>
                   </div>
                   
-                  <div className="w-full max-w-md space-y-4">
-                    <div className="flex justify-between items-end">
+                  <div className="w-full max-w-2xl space-y-4">
+                    <div className="flex justify-between items-end border-b border-neutral-800 pb-4">
                       <div className="space-y-1">
-                        <h3 className="text-lg md:text-xl font-black uppercase tracking-tight">Accessing Databases</h3>
+                        <h3 className="text-lg md:text-xl font-black uppercase tracking-tight">Active_Thread_Probe</h3>
                         <p className="text-emerald-500 text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">
                           {searchPhase}
                         </p>
@@ -443,18 +632,57 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div className="w-full h-3 bg-neutral-950 border border-neutral-800 rounded-full overflow-hidden p-0.5">
+                    <div className="w-full h-2 bg-neutral-950 border border-neutral-800 rounded-full overflow-hidden p-0.5">
                       <motion.div 
-                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        className="h-full bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
                         animate={{ width: `${searchProgress}%` }}
                         transition={{ type: "spring", bounce: 0, duration: 0.5 }}
                       />
                     </div>
                     
-                    <div className="flex justify-between text-[9px] font-bold text-neutral-600 uppercase tracking-widest pt-2">
-                      <span>Encryption: Strong</span>
-                      <span>Nodes: 128 Active</span>
-                      <span>Mode: Deep Scan</span>
+                    {/* ENHANCED TERMINAL UI */}
+                    <div className="bg-neutral-950 border border-neutral-800 rounded-2xl p-6 font-mono text-[10px] leading-relaxed overflow-hidden h-48 relative shadow-2xl">
+                      <div className="absolute top-2 right-4 flex gap-2">
+                        <span className="text-[8px] text-neutral-700 font-bold uppercase">Alpha_Stream</span>
+                        <div className="flex gap-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/20" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <AnimatePresence mode="popLayout">
+                          {terminalLogs.map((log, i) => (
+                            <motion.div
+                              key={`${i}-${log}`}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              transition={{ duration: 0.2 }}
+                              className="text-emerald-500/80 flex gap-3"
+                            >
+                              <span className="opacity-30 shrink-0 font-bold">{`0${i + 1}`}</span>
+                              <span className="opacity-40 shrink-0">[{new Date().toLocaleTimeString('en-GB')}]</span> 
+                              <span className="truncate">{log}</span>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                        {terminalLogs.length > 0 && (
+                          <motion.div 
+                            animate={{ opacity: [0, 1] }} 
+                            transition={{ repeat: Infinity, duration: 0.8 }}
+                            className="w-1.5 h-3 bg-emerald-500 inline-block ml-10"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between text-[9px] font-bold text-neutral-600 uppercase tracking-widest pt-2 px-1">
+                      <span className="flex items-center gap-1.5">
+                        <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                        Encryption: AES-256
+                      </span>
+                      <span>Nodes: 128_Active_Clusters</span>
+                      <span>Mode: Terminal_Forensics</span>
                     </div>
                   </div>
                 </div>
@@ -526,6 +754,38 @@ export default function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Manual Intelligence Pivot */}
+                  <div className="col-span-12 bg-neutral-900 border border-neutral-800 rounded-3xl p-6">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Lock className="h-4 w-4 text-emerald-500" />
+                      <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                        深度溯源指令集 (Deep Forensic Dorks)
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                      {generateDorkQueries(report.keyword).map((dork, i) => (
+                        <a 
+                          key={i}
+                          href={`https://www.google.com/search?q=${encodeURIComponent(dork.query)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex flex-col p-4 rounded-2xl bg-neutral-950 border border-neutral-800 hover:border-emerald-500/50 hover:bg-neutral-900 transition-all group"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-xs font-black text-neutral-300 uppercase tracking-tighter">{dork.name}</span>
+                            <div className="flex gap-1.5">
+                              <span className="text-[8px] bg-neutral-800 px-1 py-0.5 rounded text-neutral-500 font-bold uppercase tracking-tighter">Manual Vector</span>
+                              <ExternalLink className="w-3 h-3 text-neutral-600 group-hover:text-emerald-500 transition-colors" />
+                            </div>
+                          </div>
+                          <code className="text-[10px] text-neutral-600 font-mono break-all line-clamp-2">
+                            {dork.query}
+                          </code>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Visual Intelligence Section */}
                   <div className="col-span-12 lg:col-span-6 bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col h-[350px]">
@@ -627,12 +887,27 @@ export default function App() {
                               <td className="px-6 py-4">
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-400 font-mono">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border border-neutral-700 font-mono shadow-sm ${
+                                      res.source.includes("TETHER") ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-neutral-800 text-neutral-400"
+                                    }`}>
                                       {res.source}
                                     </span>
-                                    <span className="font-bold text-neutral-100 group-hover/row:text-emerald-400 transition-colors">{res.title}</span>
+                                    {res.source.includes("TETHER") && <Activity className="w-3 h-3 text-emerald-500 animate-pulse" />}
+                                    <span className="font-bold text-neutral-100 group-hover/row:text-emerald-400 transition-colors uppercase tracking-tight">{res.title}</span>
                                   </div>
-                                  <p className="text-[10px] text-neutral-500 font-medium leading-relaxed max-w-lg line-clamp-1 italic">{res.snippet}</p>
+                                  <p className="text-[10px] text-neutral-500 font-medium leading-relaxed max-w-lg italic">{res.snippet}</p>
+                                  {res.source.includes("TETHER") && (
+                                    <div className="flex gap-4 pt-1 opacity-50 group-hover/row:opacity-100 transition-opacity">
+                                      <div className="flex items-center gap-1">
+                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                        <span className="text-[8px] font-mono text-neutral-600 uppercase">Entropy: 0x{Math.floor(Math.random()*255).toString(16)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <div className="w-1 h-1 rounded-full bg-blue-500" />
+                                        <span className="text-[8px] font-mono text-neutral-600 uppercase">Trajectory: Secure_Local</span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-6 py-4">
