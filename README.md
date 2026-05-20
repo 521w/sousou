@@ -1,48 +1,56 @@
-# PrivacyExplorer OSINT Engine (Tether-Alpha)
+# Sousou — OSINT Search Engine (Tether-Alpha v4.0)
 
-A professional-grade, privacy-first Open Source Intelligence (OSINT) forensic search engine. Powered by a native heuristic engine and augmented by AI intelligence.
+Professional-grade privacy-first Open Source Intelligence (OSINT) forensic search engine.
 
-## 🚀 Features
+## Modules
 
-- **Tether-Alpha Native Engine**: Built-in PII (Personally Identifiable Information) pattern detection and forensic dorking.
-- **AI-Powered Deep Search**: Leverages Gemini 2.0 Flash with Google Search grounding for real-time intelligence.
-- **Zero-Retention Architecture**: Designed for extreme anonymity; no user data is persisted on the server.
-- **Full-Stack Performance**: React 18 + Vite frontend with a high-performance Express.js backend.
-- **Cyberpunk UI/UX**: High-density data visualization and interactive forensic reports.
+| Module | Endpoint | Description |
+|--------|----------|-------------|
+| **Email** | `POST /api/osint/probe` | HIBP breach check (k-anonymity, no key needed) + HIBP breach names + Gravatar lookup + disposable/freemail detection |
+| **Phone** | `POST /api/osint/probe` | CN carrier detection (CMCC/CUCC/CTCC/CBN) + country identification |
+| **Username** | `POST /api/osint/probe` | Sherlock-style cross-platform search across 30 platforms (GitHub, Twitter, Instagram, Reddit, TikTok, Telegram, Steam, V2EX, Zhihu, etc.) |
+| **IP** | `POST /api/osint/probe` | ip-api.com lookup — ISP, org, AS, geo, proxy/hosting/mobile detection |
+| **Domain** | `POST /api/osint/probe` | RDAP WHOIS — nameservers, status, entities |
+| **Web Dorks** | `POST /api/osint/probe` | Auto-generated Google dorks — pastebin leaks, GitHub secrets, cloud storage, config files, SQL dumps, CN forums |
+| **X/Twitter** | `GET /api/search/x?q=` | Twitter v2 API search (needs `X_BEARER_TOKEN`) |
+| **AI Summary** | `POST /api/osint/probe` | Gemini 2.0 Flash summary of findings (needs `GEMINI_API_KEY`) |
 
-## 🛠️ Local Setup
+All individual modules also have GET endpoints: `/api/email/:email`, `/api/phone/:phone`, `/api/username/:username`, `/api/ip/:ip`, `/api/domain/:domain`.
 
-### Prerequisites
-- Node.js (v18+)
-- npm or yarn
+## Data Sources (all free, no paid APIs required)
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone <your-github-repo-url>
-   cd privacy-explorer
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Set up environment variables:
-   Create a `.env` file in the root:
-   ```env
-   GEMINI_API_KEY=your_google_ai_studio_api_key
-   ```
+- **HIBP** — k-anonymity model (password range API, no key required)
+- **HIBP Breach Names** — optional, needs free `HIBP_API_KEY`
+- **Gravatar** — public profile images and accounts
+- **ip-api.com** — free tier, 45 req/min
+- **RDAP** — free WHOIS replacement
+- **Google Gemini** — optional AI summary
 
-### Development
-Run the development server (Frontend + Backend):
+## Setup
+
 ```bash
+cp .env.example .env
+# Edit .env with your keys (only GEMINI_API_KEY and X_BEARER_TOKEN needed for full features)
+npm install
 npm run dev
 ```
 
-### Production Build
-```bash
-npm run build
-npm start
+## Architecture
+
+```
+server.ts              — Express + Vite dev server, unified probe endpoint
+src/modules/
+  email.ts             — HIBP + Gravatar + disposable detection
+  phone.ts             — CN carrier/region detection
+  username.ts          — 30-platform cross-check (Sherlock-style)
+  ipdomain.ts          — IP geolocation + Domain RDAP + Dork generation
+src/App.tsx            — React frontend
 ```
 
-## 🛡️ Security Disclaimer
-This tool is intended for legal OSINT research, security auditing, and personal privacy verification. Users are responsible for adhering to local laws and ethical guidelines regarding data privacy.
+## v4.0 Changes
+
+- Replaced fake `Math.random()` forensic engine with real API-backed modules
+- Email: real HIBP breach data (not fabricated)
+- Username: real HTTP probes to 30 platforms (not fake social graph)
+- All data sources are free and require no API key (except optional Gemini + X)
+- Modular architecture — easy to add new modules

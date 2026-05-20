@@ -2,183 +2,123 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { TwitterApi } from "twitter-api-v2";
-import axios from "axios";
 import dotenv from "dotenv";
+
+import { emailAnalysis, hibpCheck, hibpBreaches, gravatarLookup } from "./src/modules/email";
+import { phoneIntel } from "./src/modules/phone";
+import { usernameProbe } from "./src/modules/username";
+import { ipIntel, domainIntel, generateDorks } from "./src/modules/ipdomain";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
-
 app.use(express.json());
 
-// Proxy route for X (Twitter) Search
+// X (Twitter) proxy
 app.get("/api/search/x", async (req, res) => {
   const { q } = req.query;
   if (!q) return res.status(400).json({ error: "Query required" });
-
   const token = process.env.X_BEARER_TOKEN;
-  if (!token) {
-    // Graceful fallback if no key is provided
-    return res.json([]);
-  }
-
-  const client = new TwitterApi(token);
+  if (!token) return res.json({ results: [] });
   try {
-    const searchResult = await client.v2.search(q as string, {
-      "tweet.fields": ["created_at", "public_metrics", "author_id"],
+    const client = new TwitterApi(token);
+    const r = await client.v2.search(q as string, {
+      "tweet.fields": ["created_at","public_metrics","author_id"],
       max_results: 10,
     });
-    // Return empty array if no data property exists
-    res.json(searchResult.data || []);
-  } catch (error: any) {
-    // If unauthorized or key is invalid, return empty rather than crashing/500
-    if (error.code === 401 || error.code === 403) {
-      console.warn("X API key is invalid or unauthorized. Falling back to AI scan.");
-      return res.json([]);
-    }
-    console.error("X Search Error:", error);
-    res.status(500).json({ error: "Failed to fetch from X", details: error.message });
-  }
+    res.json({ results: (r.data||[]).map((t:any)=>({
+      text:t.text, author:t.author_id, url:`https://x.com/i/status/${t.id}`, created:t.created_at,
+    })) });
+  } catch(e: any) { console.warn("X:", e.message); res.json({ results: [] }); }
 });
 
-// --- NEW: Internal Forensic Probe Engine [VERSION 3.0 ULTIMATE] ---
-app.post("/api/osint/probe", express.json(), (req, res) => {
-  const { keyword } = req.body;
+// Unified OSINT probe — replaces the old fake /api/osint/probe
+app.post("/api/osint/probe", async (req, res) => {
+  const { keyword, modules } = req.body;
   if (!keyword) return res.status(400).json({ error: "Keyword required" });
+  const kw = String(keyword).trim();
+  const active = (modules || ["email","phone","username","ip","domain","web"])
+    .map((m:string) => m.toLowerCase());
+  const output: any = { keyword: kw, timestamp: new Date().toISOString(), results: {} };
 
-  const keywordStr = String(keyword).trim();
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(kw);
+  const isPhone = /^\+?\d{7,15}$/.test(kw.replace(/\s/g,""));
+  const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(kw);
+  const isDomain = /^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(kw) && !isEmail;
+  const isUser = !isEmail && !isPhone && !isIP && /^[a-zA-Z0-9_]{2,32}$/.test(kw);
 
-  // ULTIMATE HEURISTIC MATRIX
-  const pattern = {
-    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(keywordStr),
-    phone: /^\+?\d{8,15}$/.test(keywordStr.replace(/\s/g, "")),
-    crypto: /^(0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(keywordStr),
-    domain: /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/.test(keywordStr),
-    socMedia: /^(@|uid:|t\.me\/|user:)[a-zA-Z0-9_]{3,32}$/.test(keywordStr),
-    ip: /^(\d{1,3}\.){3}\d{1,3}$/.test(keywordStr)
-  };
+  const tasks: Promise<void>[] = [];
 
-  const probeResults = [];
+  if (active.includes("email") && isEmail) tasks.push((async () => {
+    const a = emailAnalysis(kw);
+    const [hb, br, gv] = a.valid
+      ? await Promise.all([hibpCheck(kw), hibpBreaches(kw), gravatarLookup(kw)])
+      : [null, null, null];
+    output.results.email = { analysis: a, hibp: hb, breaches: br, gravatar: gv };
+  })());
 
-  // Metadata Probe: Identity Signature
-  probeResults.push({
-    title: `Forensic Signature: [${keywordStr}]`,
-    type: "ID_SCAN",
-    confidence: 99,
-    findings: [
-      `Entity Class: ${pattern.email ? "COMM_NODE_EMAIL" : pattern.crypto ? "FIN_NODE_CRYPTO" : pattern.socMedia ? "SOC_INTEL_ID" : "UNKNOWN_CLUSTER"}`,
-      `Geopolitical Bias: Detected match in APAC/CN Data Mirrors`,
-      `Entropy/Randomness: ${pattern.socMedia ? "Low (Custom ID)" : "High (System Generated)"}`,
-      `Risk Score Index: ${Math.floor(Math.random() * 30 + 50)}/100`
-    ]
-  });
-
-  // Specific Leak/Vector Hits
-  if (pattern.email) {
-    probeResults.push({
-      title: "Credential Leak Analysis",
-      type: "LEAK_INTEL",
-      confidence: 91,
-      findings: [
-        "Matches in '2024_Antigravity_Pivot' mega-leak",
-        "Associated with password hashes using obsolete SHA1 algorithm",
-        "Linked to 3 distinct e-commerce breaches (2021-2023)"
-      ]
-    });
+  if (active.includes("phone")) {
+    output.results.phone = phoneIntel(kw);
   }
 
-  if (pattern.socMedia) {
-    probeResults.push({
-      title: "Social Graph Trajectory",
-      type: "SOCIAL_OSINT",
-      confidence: 87,
-      findings: [
-        "Identity mapping found on Telegram/Discord metadata bridges",
-        "Public activity detected in technical security forums",
-        "Cross-platform handle reuse: 84% probability"
-      ]
-    });
+  if (active.includes("username") && isUser) tasks.push((async () => {
+    output.results.username = await usernameProbe(kw);
+  })());
+
+  if (active.includes("ip") && isIP) tasks.push((async () => {
+    output.results.ip = await ipIntel(kw);
+  })());
+
+  if (active.includes("domain") && isDomain) tasks.push((async () => {
+    output.results.domain = await domainIntel(kw);
+  })());
+
+  if (active.includes("web")) {
+    output.results.dorks = generateDorks(kw);
   }
 
-  if (pattern.crypto) {
-    probeResults.push({
-      title: "Financial Forensic Trace",
-      type: "CRYPTO_INTEL",
-      confidence: 94,
-      findings: [
-        "Address linked to decentralized mixer exit nodes",
-        "Historical DEX volume detected on Polygon/Ethereum mainnet",
-        "Interaction with sanctioned protocol contracts flagged"
-      ]
-    });
+  await Promise.all(tasks);
+
+  // Optional AI summary
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const s = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: `OSINT analysis for "${kw}". Summarize risks, findings, and next steps: ${JSON.stringify(output.results).slice(0, 3000)}`,
+      });
+      output.aiSummary = s.text;
+    } catch {}
   }
 
-  res.json({
-    engine: "TETHER-ALPHA-ULTIMATE",
-    version: "3.0.0-HARDENED",
-    timestamp: new Date().toISOString(),
-    results: probeResults,
-    telemetry: {
-      searchClusters: 14,
-      recordsScanned: "18.5B",
-      latency: "28ms"
-    }
-  });
+  res.json(output);
 });
 
-// Proxy route for X (Twitter) Search
-app.get("/api/search/x", async (req, res) => {
-  const { q } = req.query;
-  const userToken = req.headers["x-user-token"];
-  const bearerToken = userToken || process.env.X_BEARER_TOKEN;
-
-  if (!bearerToken || bearerToken === "your_x_bearer_token") {
-    // Return empty results if no token is available
-    return res.json({ results: [] });
-  }
-
-  try {
-    const response = await fetch(`https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(q as string)}&tweet.fields=created_at`, {
-      headers: {
-        "Authorization": `Bearer ${bearerToken}`
-      }
-    });
-
-    if (!response.ok) throw new Error("X API error");
-    const data = await response.json();
-    
-    const results = (data.data || []).map((tweet: any) => ({
-      title: "X Platform Match",
-      url: `https://twitter.com/any/status/${tweet.id}`,
-      text: tweet.text,
-      source: "X API"
-    }));
-
-    res.json({ results });
-  } catch (error) {
-    console.error("X Search Fail:", error);
-    res.status(200).json({ results: [] }); // Graceful fail
-  }
+// Individual module endpoints for direct access
+app.get("/api/email/:email", async (req, res) => {
+  const kw = req.params.email;
+  const a = emailAnalysis(kw);
+  if (!a.valid) return res.json({ valid: false });
+  const [hb, br, gv] = await Promise.all([hibpCheck(kw), hibpBreaches(kw), gravatarLookup(kw)]);
+  res.json({ email: kw, analysis: a, hibp: hb, breaches: br, gravatar: gv });
 });
 
-// Proxy route for LinkedIn Search (Mocked since LinkedIn requires complex OAuth/Approval)
-app.get("/api/search/linkedin", async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: "Query required" });
+app.get("/api/phone/:phone", (req, res) => {
+  res.json({ phone: req.params.phone, ...phoneIntel(req.params.phone) });
+});
 
-  // In a real scenario, you'd use a LinkedIn access token
-  // For this demo/OSINT tool context, we might use a scraping service or search mirror
-  // Here we'll return a placeholder or search mirror results
-  try {
-    // Attempting a simple search mirror or public profile lookup if possible
-    res.json({
-      message: "LinkedIn API requires registered App approval. Please configure LINKEDIN_ACCESS_TOKEN.",
-      results: []
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: "LinkedIn Integration Error" });
-  }
+app.get("/api/username/:username", async (req, res) => {
+  res.json(await usernameProbe(req.params.username));
+});
+
+app.get("/api/ip/:ip", async (req, res) => {
+  res.json({ ip: req.params.ip, ...await ipIntel(req.params.ip) });
+});
+
+app.get("/api/domain/:domain", async (req, res) => {
+  res.json(await domainIntel(req.params.domain));
 });
 
 async function startServer() {
@@ -191,14 +131,9 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  app.listen(PORT, "0.0.0.0", () => console.log(`[Sousou] Listening on :${PORT}`));
 }
 
 startServer();
