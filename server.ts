@@ -27,7 +27,12 @@ app.get("/api/search/x", async (req, res) => {
       "tweet.fields": ["created_at","public_metrics","author_id"],
       max_results: 10,
     });
-    res.json({ results: (r.data||[]).map((t:any)=>({
+    const tweets = Array.isArray((r.data as any)?.data)
+      ? (r.data as any).data
+      : Array.isArray(r.data)
+        ? r.data
+        : [];
+    res.json({ results: tweets.map((t:any)=>({
       text:t.text, author:t.author_id, url:`https://x.com/i/status/${t.id}`, created:t.created_at,
     })) });
   } catch(e: any) { console.warn("X:", e.message); res.json({ results: [] }); }
