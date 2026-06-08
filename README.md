@@ -94,10 +94,11 @@ npm run build
 
 Notes:
 
-- `npm install` completed, with npm audit reporting 12 vulnerabilities from dependencies.
-- `npm run lint` completed after fixing X/Twitter response typing in `server.ts`.
-- `npm run build` completed with Vite.
+- `npm audit` reports 0 vulnerabilities after removing an unused Telegram bot dependency and applying dependency patch updates.
+- `npm run lint` completes with `tsc --noEmit`.
+- `npm run build` completes with Vite.
 - Vite reports a large bundle warning; this does not fail the build.
+- Runtime smoke testing may require a standard Node.js environment; the current Termux/OpenClaw Node wrapper injects compatibility flags that can prevent `npm run dev` from starting normally.
 
 ## Data Sources
 
