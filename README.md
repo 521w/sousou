@@ -82,6 +82,23 @@ npm run build
 npm start
 ```
 
+## Verification
+
+Validated on Termux / Node.js v22.22.0:
+
+```bash
+npm install
+npm run lint
+npm run build
+```
+
+Notes:
+
+- `npm install` completed, with npm audit reporting 12 vulnerabilities from dependencies.
+- `npm run lint` completed after fixing X/Twitter response typing in `server.ts`.
+- `npm run build` completed with Vite.
+- Vite reports a large bundle warning; this does not fail the build.
+
 ## Data Sources
 
 - HIBP k-anonymity password API
